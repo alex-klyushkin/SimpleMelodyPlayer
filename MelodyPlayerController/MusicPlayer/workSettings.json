@@ -1,0 +1,13 @@
+{
+    "linkController":
+    {
+        "type": "ComPort",
+        "settings":
+        {
+            "baudRate": 250000,
+            "dataLen": 8,
+            "parity": "even",
+            "stopBits": 1
+        }
+    }
+}
