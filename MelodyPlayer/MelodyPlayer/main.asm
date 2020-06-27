@@ -7,6 +7,9 @@
 
 ; 1) написать запуск проигрывания одной ноты по данным лежащим в буфере - обработка прерываний на обоих таймерах
 ; 2) сделать старт/стоп мелодии. В мелодию добавить маркер конца.
+; 3) проигрывание мелодии запускать в 2 случаях: начало проигрывания, переход от паузы к проигрыванию. 
+;    останавливать при паузе (счетчик циклов таймера0 не обнулять), при стопе 
+;    (обнулять счетчик циклов и указатели на данные в буфере мелодии) и в конце мелодии (так же как и при стопе)
 
 
 .include "tn2313adef.inc"
@@ -14,7 +17,7 @@
 
 
 /******************************************************************************
-* reginsters aliases 
+* registers aliases 
 ******************************************************************************/
 .def usartDataByte		= r15
 .def temp1				= r16
@@ -79,6 +82,8 @@
 .equ NEED_SEND_ANSWER_BIT			= 4
 .equ STATE_BYTE_NUMBER_IN_HEADER	= 2
 
+.equ END_MELODY_MARKER				= 0xFF
+
 
 
 /******************************************************************************
@@ -106,6 +111,14 @@
 	sbr receivedMsgState, (1 << NEED_SEND_ANSWER_BIT)
 	ldi currentState, @0
 	rcall SAVE_CUR_STATE_IN_OUT_BUFFER_FUNC
+.ENDMACRO
+
+
+
+.MACRO LOAD_WORD_FROM_PROG_MEM_MACRO
+	ldi ZL, LOW(@0 * 2)
+	ldi ZH, LOW(@0 * 2)
+	rcall LOAD_WORD_FROM_PROG_MEM_FUNC
 .ENDMACRO
 
 
@@ -273,8 +286,8 @@ PROCESS_STOP_MSG_FUNC:
 
 process_stop_msg_func_apply_stop:
 	SET_AND_SAVE_CUR_STATE_FOR_SENDING_MACRO STOPPED
-	STOP_TIMER0_FUNC
-	STOP_TIMER1_FUNC
+	rcall STOP_TIMER0_FUNC
+	rcall STOP_TIMER1_FUNC
 	clr startData
 	clr endData
 	clr timer0DelayCycles
@@ -289,8 +302,8 @@ PROCESS_PAUSE_MSG_FUNC:
 	brne process_pause_msg_func_end
 
 	SET_AND_SAVE_CUR_STATE_FOR_SENDING_MACRO PAUSED
-	STOP_TIMER0_FUNC
-	STOP_TIMER1_FUNC
+	rcall STOP_TIMER0_FUNC
+	rcall STOP_TIMER1_FUNC
 
 process_pause_msg_func_end:
 	ret
@@ -364,20 +377,17 @@ STORE_MSG_DATA_FUNC:
 	mov temp1, endData
 	mov temp2, usartDataByte
 	STORE_BYTE_TO_DSEG_MACRO uartBuffer
-	inc endData
-	cpi endData, UART_BUFFER_SIZE
-	brlo store_msg_data_func_end
-	clr endData
+	rcall INC_UART_DATA_END_PTR_FUNC
 
 store_msg_data_func_check_msg_len:
 	dec receivedMsgLen
 	tst receivedMsgLen
 	brne store_msg_data_func_end
-	; if needs - start playing
 	; if needs - send answer
 	sbrc receivedMsgState, NEED_SEND_ANSWER_BIT
 	rcall SEND_ANSWER_TO_USART_FUNC
 	clr receivedMsgState
+    ; if needs - start playing
 
 store_msg_data_func_end:
 	ret
@@ -390,6 +400,66 @@ LOAD_BYTE_FROM_DSEG_FUNC:
 	add ZL, temp1
 	adc ZH, temp2
 	ld temp2, Z
+	ret
+
+
+
+PLAY_NEXT_NOTE_FUNC:
+	; load delay value
+	mov temp1, startData
+	LOAD_BYTE_FROM_DSEG_MACRO uartBuffer
+	mov temp1, temp2
+	rcall INC_UART_DATA_START_PTR_FUNC
+
+	rcall STOP_TIMER0_FUNC
+	rcall NORMALIZE_TIMER0_DELAYS_COUNT_FUNC
+	out OCR0A, temp1
+
+	; load freq number value
+	mov temp1, startData
+	LOAD_BYTE_FROM_DSEG_MACRO uartBuffer
+	mov temp1, temp2
+	rcall INC_UART_DATA_START_PTR_FUNC
+	rcall STOP_TIMER1_FUNC
+	LOAD_WORD_FROM_PROG_MEM_MACRO octavaMinor ; after this func complete we will have freq in temp1:temp2
+	rcall SETUP_TIMER1_REGS_VALUE_FUNC
+
+	; play note
+	rcall START_TIMER0_1024_PRESCALING_FUNC
+	rcall START_TIMER1_NO_PRESCALING_FUNC
+	ret
+
+
+
+LOAD_WORD_FROM_PROG_MEM_FUNC:
+	rol temp1
+	clr temp2
+	add ZL, temp1
+	adc ZH, temp2
+	lpm temp1, Z+
+	lpm temp2, Z
+	ret
+
+
+
+INC_UART_DATA_START_PTR_FUNC:
+	inc startData
+	cpi startData, UART_BUFFER_SIZE
+	brlo inc_uart_data_start_ptr_func_end
+	clr startData
+
+inc_uart_data_start_ptr_func_end:
+	ret
+
+
+
+INC_UART_DATA_END_PTR_FUNC:
+	inc endData
+	cpi endData, UART_BUFFER_SIZE
+	brlo inc_uart_data_end_ptr_func_end
+	clr endData
+
+inc_uart_data_end_ptr_func_end:
 	ret
 
 
@@ -505,6 +575,18 @@ SETUP_TIMER1_FAST_PWM_OUTPUTB_FUNC:
 
 
 
+SETUP_TIMER1_REGS_VALUE_FUNC:
+	out OCR1AH, temp2
+	out OCR1AL, temp1
+	clc
+	ror temp1
+	ror temp2
+	out OCR1BH, temp2
+	out OCR1BL, temp1
+	ret
+
+
+
 START_TIMER1_NO_PRESCALING_FUNC:
 	in temp1, TCCR1B
 	sbr temp1, (1 << CS10)
@@ -558,7 +640,7 @@ STOP_TIMER0_FUNC:
 ; 				 do		do#    re     re#    mi     fa     fa#    sol    sol#   la     la#    si
 octavaMinor: .dw 61157, 57724, 54484, 51427, 48541, 45816, 43243, 40816, 38526, 36364, 34323, 32396
 octavaOne:   .dw 30578, 28862, 27242, 25714, 24270, 22908, 21622, 20408, 19263, 18182, 17162, 16198
-octavaTwo:   .dw 15289, 14431‬, 13621, 12857, 12135, 11454, 10811, 10204,  9632,  9091,  8581,  8099
+;octavaTwo:   .dw 15289, 14431‬, 13621, 12857, 12135, 11454, 10811, 10204,  9632,  9091,  8581,  8099
 octavaThree: .dw  7645,  7216,  6810,  6428,  6068,  5727,  5405,  5102,  4816,  4545,  4290,  4050
 octavaFour:  .dw  3822,  3608,  3405,  3214,  3034,  2863,  2703,  2551,  2408,  2273,  2145,  2025
-octavaAddrs: .dw octavaMinor * 2, octavaOne * 2, octavaTwo * 2, octavaThree * 2, octavaFour * 2
+;octavaAddrs: .dw octavaMinor * 2, octavaOne * 2, octavaTwo * 2, octavaThree * 2, octavaFour * 2
