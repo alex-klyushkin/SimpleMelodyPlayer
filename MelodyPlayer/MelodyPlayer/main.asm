@@ -6,10 +6,7 @@
 ;
 
 ; 1) написать запуск проигрывания одной ноты по данным лежащим в буфере - обработка прерываний на обоих таймерах
-; 2) сделать старт/стоп мелодии. В мелодию добавить маркер конца.
-; 3) проигрывание мелодии запускать в 2 случаях: начало проигрывания, переход от паузы к проигрыванию. 
-;    останавливать при паузе (счетчик циклов таймера0 не обнулять), при стопе 
-;    (обнулять счетчик циклов и указатели на данные в буфере мелодии) и в конце мелодии (так же как и при стопе)
+; 2) дописать обработчик прерывания по таймеру
 
 
 .include "tn2313adef.inc"
@@ -80,6 +77,9 @@
 .equ MSG_TYPE_BYTE_BIT				= 2
 .equ FULL_MSG_HEADER_BIT			= 3
 .equ NEED_SEND_ANSWER_BIT			= 4
+.equ NEED_PLAY_MELODY_BIT			= 5
+.equ MELODY_END_BIT1				= 6
+.equ MELODY_END_BIT2				= 7
 .equ STATE_BYTE_NUMBER_IN_HEADER	= 2
 
 .equ END_MELODY_MARKER				= 0xFF
@@ -261,6 +261,7 @@ PROCESS_PLAY_MSG_FUNC:
 	brne process_play_msg_func_end
 
 	SET_AND_SAVE_CUR_STATE_FOR_SENDING_MACRO PLAYING
+	sbr receivedMsgState, (1 << NEED_PLAY_MELODY_BIT)
 
 process_play_msg_func_end:
 	ret
@@ -272,6 +273,7 @@ PROCESS_CONT_PLAY_MSG_FUNC:
 	brne process_cont_play_msg_func_end
 
 	SET_AND_SAVE_CUR_STATE_FOR_SENDING_MACRO PLAYING
+	sbr receivedMsgState, (1 << NEED_PLAY_MELODY_BIT)
 
 process_cont_play_msg_func_end:
 	ret
@@ -353,6 +355,8 @@ PROCESS_MSG_LENGTH_FUNC:
 	; load from msgHdrOutBuffer first byte and send it
 	sbrc receivedMsgState, NEED_SEND_ANSWER_BIT
 	rcall SEND_ANSWER_TO_USART_FUNC
+	sbrc receivedMsgState, NEED_PLAY_MELODY_BIT
+	rcall PLAY_NEXT_NOTE_FUNC
 	clr receivedMsgState
 
 process_msg_length_func_end:
@@ -386,8 +390,10 @@ store_msg_data_func_check_msg_len:
 	; if needs - send answer
 	sbrc receivedMsgState, NEED_SEND_ANSWER_BIT
 	rcall SEND_ANSWER_TO_USART_FUNC
-	clr receivedMsgState
     ; if needs - start playing
+	sbrc receivedMsgState, NEED_PLAY_MELODY_BIT
+	rcall PLAY_NEXT_NOTE_FUNC
+	clr receivedMsgState
 
 store_msg_data_func_end:
 	ret
@@ -405,13 +411,19 @@ LOAD_BYTE_FROM_DSEG_FUNC:
 
 
 PLAY_NEXT_NOTE_FUNC:
+	rcall STOP_TIMER0_FUNC
+	rcall STOP_TIMER1_FUNC
+
 	; load delay value
 	mov temp1, startData
 	LOAD_BYTE_FROM_DSEG_MACRO uartBuffer
 	mov temp1, temp2
 	rcall INC_UART_DATA_START_PTR_FUNC
+	cpi temp1, END_MELODY_MARKER
+	brne play_next_note_func_prepare_timer0
+	sbr receivedMsgState, (1 << MELODY_END_BIT1)
 
-	rcall STOP_TIMER0_FUNC
+play_next_note_func_prepare_timer0:
 	rcall NORMALIZE_TIMER0_DELAYS_COUNT_FUNC
 	out OCR0A, temp1
 
@@ -420,9 +432,24 @@ PLAY_NEXT_NOTE_FUNC:
 	LOAD_BYTE_FROM_DSEG_MACRO uartBuffer
 	mov temp1, temp2
 	rcall INC_UART_DATA_START_PTR_FUNC
-	rcall STOP_TIMER1_FUNC
+	cpi temp1, END_MELODY_MARKER
+	brne play_next_note_func_prepare_timer1
+	sbr receivedMsgState, MELODY_END_BIT2
+
+	sbrc receivedMsgState, MELODY_END_BIT1
+	sbrs receivedMsgState, MELODY_END_BIT2
+	rjmp play_next_note_func_prepare_timer1
+	ldi currentState, STOPPED
+	cbr receivedMsgState, (1 << MELODY_END_BIT1 | 1 << MELODY_END_BIT2)
+	clr startData
+	clr endData
+	ret
+
+play_next_note_func_prepare_timer1:
 	LOAD_WORD_FROM_PROG_MEM_MACRO octavaMinor ; after this func complete we will have freq in temp1:temp2
 	rcall SETUP_TIMER1_REGS_VALUE_FUNC
+
+	cbr receivedMsgState, (1 << MELODY_END_BIT1 | 1 << MELODY_END_BIT2)
 
 	; play note
 	rcall START_TIMER0_1024_PRESCALING_FUNC
@@ -580,6 +607,7 @@ SETUP_TIMER1_REGS_VALUE_FUNC:
 	out OCR1AL, temp1
 	clc
 	ror temp1
+	clc
 	ror temp2
 	out OCR1BH, temp2
 	out OCR1BL, temp1
