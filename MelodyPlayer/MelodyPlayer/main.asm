@@ -6,7 +6,8 @@
 ;
 
 ; 1) написать запуск проигрывания одной ноты по данным лежащим в буфере - обработка прерываний на обоих таймерах
-; 2) дописать обработчик прерывания по таймеру
+; 2) дописать обработчик прерывания по таймеру, не забыть проверку количества оставшихся нот
+; 3) добавить обработку переполнения и опустошения буфера
 
 
 .include "tn2313adef.inc"
@@ -491,6 +492,23 @@ inc_uart_data_end_ptr_func_end:
 
 
 
+NORMALIZE_TIMER0_DELAYS_COUNT_FUNC:
+	ldi timer0DelayCycles, TIMER_8BIT_REPETITION
+
+normalize_timer0_delays_count_func_cycle:
+	cpi temp1, 128
+	brsh normalize_timer0_delays_count_func_end
+	sbrc timer0DelayCycles, 0
+	rjmp normalize_timer0_delays_count_func_end
+	lsl temp1
+	lsr timer0DelayCycles
+	rjmp normalize_timer0_delays_count_func_cycle
+
+normalize_timer0_delays_count_func_end:
+	ret
+
+
+
 /******************************************************************************
 * Functions for sending bytes to usart
 * send data from msgHdrOutBuffer; first byte has already sent from another ISR
@@ -606,9 +624,8 @@ SETUP_TIMER1_REGS_VALUE_FUNC:
 	out OCR1AH, temp2
 	out OCR1AL, temp1
 	clc
-	ror temp1
-	clc
 	ror temp2
+	ror temp1
 	out OCR1BH, temp2
 	out OCR1BL, temp1
 	ret
