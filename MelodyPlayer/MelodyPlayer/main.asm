@@ -6,8 +6,9 @@
 ;
 
 ; 1) написать запуск проигрывания одной ноты по данным лежащим в буфере - обработка прерываний на обоих таймерах
-; 2) дописать обработчик прерывания по таймеру, не забыть проверку количества оставшихся нот
-; 3) добавить обработку переполнения и опустошения буфера
+; 2) добавить обработку переполнения и опустошения буфера
+; 3) дописать обработчик прерывания по таймеру, не забыть проверку количества оставшихся нот
+
 
 
 .include "tn2313adef.inc"
@@ -415,6 +416,15 @@ PLAY_NEXT_NOTE_FUNC:
 	rcall STOP_TIMER0_FUNC
 	rcall STOP_TIMER1_FUNC
 
+	rcall CALCULATE_BYTE_COUNT_IN_BUFFER_FUNC
+	cpi temp1, 2
+	brsh play_next_note_func_load_delay
+	SET_AND_SAVE_CUR_STATE_FOR_SENDING_MACRO PAUSED
+	rcall SEND_ANSWER_TO_USART_FUNC
+	clr receivedMsgState
+	ret
+
+play_next_note_func_load_delay:
 	; load delay value
 	mov temp1, startData
 	LOAD_BYTE_FROM_DSEG_MACRO uartBuffer
