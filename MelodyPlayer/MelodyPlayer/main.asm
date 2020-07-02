@@ -380,6 +380,10 @@ SEND_ANSWER_TO_USART_FUNC:
 * Function for storing data from usart to uartBuffer
 ******************************************************************************/
 STORE_MSG_DATA_FUNC:
+	rcall CALCULATE_BYTE_COUNT_IN_BUFFER_FUNC
+	cpi temp1, (UART_BUFFER_SIZE - 1)
+	; if there is no enough place for next byte - skip it
+	brsh store_msg_data_func_check_msg_len
 	mov temp1, endData
 	mov temp2, usartDataByte
 	STORE_BYTE_TO_DSEG_MACRO uartBuffer
@@ -465,6 +469,30 @@ play_next_note_func_prepare_timer1:
 	; play note
 	rcall START_TIMER0_1024_PRESCALING_FUNC
 	rcall START_TIMER1_NO_PRESCALING_FUNC
+	ret
+
+
+
+CALCULATE_BYTE_COUNT_IN_BUFFER_FUNC:
+	cp startData, endData
+	brsh calculate_byte_count_in_buffer_func_not_lower
+	; startData lower than endData
+	mov temp1, endData
+	sub temp1, startData
+	ret
+
+calculate_byte_count_in_buffer_func_not_lower:
+	breq calculate_byte_count_in_buffer_func_equal
+	; endData lower than startData
+	mov temp2, startData
+	sub temp2, endData
+	ldi temp1, UART_BUFFER_SIZE
+	sub temp1, temp2
+	ret
+
+calculate_byte_count_in_buffer_func_equal:
+	; startData equal endData
+	clr temp1
 	ret
 
 
