@@ -6,8 +6,7 @@
 ;
 
 ; 1) написать запуск проигрывания одной ноты по данным лежащим в буфере - обработка прерываний на обоих таймерах
-; 2) добавить обработку переполнения и опустошения буфера
-; 3) дописать обработчик прерывания по таймеру, не забыть проверку количества оставшихся нот
+; 2) дописать обработчик прерывания по таймеру, не забыть проверку количества оставшихся нот
 
 
 
@@ -461,6 +460,9 @@ play_next_note_func_prepare_timer0:
 	ret
 
 play_next_note_func_prepare_timer1:
+	cpi temp1, 0 ; is it pause?
+	breq play_next_note_func_pause_start
+	dec temp1
 	LOAD_WORD_FROM_PROG_MEM_MACRO octavaMinor ; after this func complete we will have freq in temp1:temp2
 	rcall SETUP_TIMER1_REGS_VALUE_FUNC
 
@@ -468,6 +470,7 @@ play_next_note_func_prepare_timer1:
 
 	; play note
 	rcall START_TIMER0_1024_PRESCALING_FUNC
+play_next_note_func_pause_start:
 	rcall START_TIMER1_NO_PRESCALING_FUNC
 	ret
 
@@ -533,6 +536,10 @@ inc_uart_data_end_ptr_func_end:
 NORMALIZE_TIMER0_DELAYS_COUNT_FUNC:
 	ldi timer0DelayCycles, TIMER_8BIT_REPETITION
 
+	; is it full pause?
+	cpi temp1, 0
+	breq normalize_timer0_delays_count_func_setup_full_pause
+
 normalize_timer0_delays_count_func_cycle:
 	cpi temp1, 128
 	brsh normalize_timer0_delays_count_func_end
@@ -541,6 +548,10 @@ normalize_timer0_delays_count_func_cycle:
 	lsl temp1
 	lsr timer0DelayCycles
 	rjmp normalize_timer0_delays_count_func_cycle
+
+normalize_timer0_delays_count_func_setup_full_pause:
+	ldi timer0DelayCycles, TIMER_8BIT_REPETITION * 2
+	ldi temp1, 128
 
 normalize_timer0_delays_count_func_end:
 	ret
