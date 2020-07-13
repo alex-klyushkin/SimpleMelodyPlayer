@@ -5,10 +5,6 @@
 ; Author : Алексей
 ;
 
-; 1) написать запуск проигрывания одной ноты по данным лежащим в буфере - обработка прерываний на обоих таймерах
-; 2) дописать обработчик прерывания по таймеру, не забыть проверку количества оставшихся нот
-
-
 
 .include "tn2313adef.inc"
 
@@ -85,6 +81,7 @@
 
 .equ END_MELODY_MARKER				= 0xFF
 
+.equ NEED_NEXT_PORTION_OF_MELODY_BYTES_COUNT = 16
 
 
 /******************************************************************************
@@ -457,6 +454,8 @@ play_next_note_func_prepare_timer0:
 	cbr receivedMsgState, (1 << MELODY_END_BIT1 | 1 << MELODY_END_BIT2)
 	clr startData
 	clr endData
+	SET_AND_SAVE_CUR_STATE_FOR_SENDING_MACRO STOPPED
+	rcall SEND_ANSWER_TO_USART_FUNC
 	ret
 
 play_next_note_func_prepare_timer1:
@@ -592,12 +591,25 @@ USART0_TRANSMIT_FUNC:
 ******************************************************************************/
 TIMER0_COMPA_ISR:
 	dec timer0DelayCycles
-	clr temp1
-	cpse timer0DelayCycles, temp1
+	tst timer0DelayCycles
+	brne timer0_compa_isr_end
+
+	rcall PLAY_NEXT_NOTE_FUNC
+	rcall CALCULATE_BYTE_COUNT_IN_BUFFER_FUNC
+
+	cpi temp1, NEED_NEXT_PORTION_OF_MELODY_BYTES_COUNT + 1
+	brsh timer0_compa_isr_end
+	cpi currentState, PLAYING
+	brne timer0_compa_isr_end
+
+	ldi temp1, STATE_BYTE_NUMBER_IN_HEADER
+	ldi temp2, NEXT_CHUNK
+	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
+	rcall SEND_ANSWER_TO_USART_FUNC
+
+timer0_compa_isr_end:
 	reti
 
-	;load next note and next delay
-	reti
 
 
 
@@ -734,7 +746,7 @@ STOP_TIMER0_FUNC:
 ; 				 do		do#    re     re#    mi     fa     fa#    sol    sol#   la     la#    si
 octavaMinor: .dw 61157, 57724, 54484, 51427, 48541, 45816, 43243, 40816, 38526, 36364, 34323, 32396
 octavaOne:   .dw 30578, 28862, 27242, 25714, 24270, 22908, 21622, 20408, 19263, 18182, 17162, 16198
-;octavaTwo:   .dw 15289, 14431‬, 13621, 12857, 12135, 11454, 10811, 10204,  9632,  9091,  8581,  8099
+octavaTwo:   .dw 15289, 14430, 13621, 12857, 12135, 11454, 10811, 10204,  9632,  9091,  8581,  8099
 octavaThree: .dw  7645,  7216,  6810,  6428,  6068,  5727,  5405,  5102,  4816,  4545,  4290,  4050
 octavaFour:  .dw  3822,  3608,  3405,  3214,  3034,  2863,  2703,  2551,  2408,  2273,  2145,  2025
-;octavaAddrs: .dw octavaMinor * 2, octavaOne * 2, octavaTwo * 2, octavaThree * 2, octavaFour * 2
+octavaAddrs: .dw octavaMinor * 2, octavaOne * 2, octavaTwo * 2, octavaThree * 2, octavaFour * 2
