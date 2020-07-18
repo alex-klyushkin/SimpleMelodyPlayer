@@ -125,7 +125,7 @@ void MelodyController::MessageReceived(ProtMessageType msgType, const QVector<ch
 
         case ProtMessageType::NEXT_CHUNK:
             if (curByteNoToSend >= curMelody.length()) {
-                Stop();
+                SendMessage(ProtMessageType::END_MELODY, {});
                 INFO_LOG("Melody is over");
             } else {
                 SendNextPortion(ProtMessageType::CONT_PLAY);

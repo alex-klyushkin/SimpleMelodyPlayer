@@ -6,6 +6,9 @@
 ;
 
 
+; 1) добавить новое сообщение от хоста - конец мелодии
+
+
 .include "tn2313adef.inc"
 
 
@@ -13,6 +16,7 @@
 /******************************************************************************
 * registers aliases 
 ******************************************************************************/
+.def isNeedNextChunk	= r14
 .def usartDataByte		= r15
 .def temp1				= r16
 .def temp2				= r17
@@ -57,12 +61,13 @@
 .equ CONNECT      = 0x05
 .equ DISCONNECT   = 0x06
 .equ STATUS_REQ   = 0x07
+.equ END_MELODY   = 0x08
 ; to app
-.equ DISCONNECTED = 0x08
-.equ PLAYING      = 0x09
-.equ STOPPED      = 0x0a
-.equ PAUSED       = 0x0b
-.equ NEXT_CHUNK   = 0x0c
+.equ DISCONNECTED = 0x09
+.equ PLAYING      = 0x0a
+.equ STOPPED      = 0x0b
+.equ PAUSED       = 0x0c
+.equ NEXT_CHUNK   = 0x0d
 
 
 .equ FIRST_MAGIC_BYTE_MASK			= 0x01
@@ -216,24 +221,6 @@ complete_second_magic_byte:
 /******************************************************************************
 * Functions for processing message type
 ******************************************************************************/
-PROCESS_MSG_TYPE_FUNC:
-	cpi receivedMsgType, PLAY
-	breq PROCESS_PLAY_MSG_FUNC
-	cpi receivedMsgType, CONT_PLAY
-	breq PROCESS_CONT_PLAY_MSG_FUNC
-	cpi receivedMsgType, STOP
-	breq PROCESS_STOP_MSG_FUNC
-	cpi receivedMsgType, PAUSE
-	breq PROCESS_PAUSE_MSG_FUNC
-	cpi receivedMsgType, CONNECT
-	breq PROCESS_CONNECT_MSG_FUNC
-	cpi receivedMsgType, DISCONNECT
-	breq PROCESS_DISCONNECT_MSG_FUNC
-	cpi receivedMsgType, STATUS_REQ
-	breq PROCESS_STATUS_REQ_MSG_FUNC
-	ret
-
-
 
 ; temp1 - offset, temp2 - value to store
 STORE_BYTE_TO_DSEG_FUNC:
@@ -260,6 +247,8 @@ PROCESS_PLAY_MSG_FUNC:
 
 	SET_AND_SAVE_CUR_STATE_FOR_SENDING_MACRO PLAYING
 	sbr receivedMsgState, (1 << NEED_PLAY_MELODY_BIT)
+	ldi temp1, 1
+	mov isNeedNextChunk, temp1
 
 process_play_msg_func_end:
 	ret
@@ -274,6 +263,27 @@ PROCESS_CONT_PLAY_MSG_FUNC:
 	sbr receivedMsgState, (1 << NEED_PLAY_MELODY_BIT)
 
 process_cont_play_msg_func_end:
+	ret
+
+
+
+PROCESS_MSG_TYPE_FUNC:
+	cpi receivedMsgType, PLAY
+	breq PROCESS_PLAY_MSG_FUNC
+	cpi receivedMsgType, CONT_PLAY
+	breq PROCESS_CONT_PLAY_MSG_FUNC
+	cpi receivedMsgType, STOP
+	breq PROCESS_STOP_MSG_FUNC
+	cpi receivedMsgType, PAUSE
+	breq PROCESS_PAUSE_MSG_FUNC
+	cpi receivedMsgType, CONNECT
+	breq PROCESS_CONNECT_MSG_FUNC
+	cpi receivedMsgType, DISCONNECT
+	breq PROCESS_DISCONNECT_MSG_FUNC
+	cpi receivedMsgType, STATUS_REQ
+	breq PROCESS_STATUS_REQ_MSG_FUNC
+	cpi receivedMsgType, END_MELODY
+	breq PROCESS_STATUS_END_MELODY_FUNC
 	ret
 
 
@@ -340,6 +350,11 @@ PROCESS_DISCONNECT_MSG_FUNC:
 process_disconnect_msg_func_end:
 	ret
 
+
+
+PROCESS_STATUS_END_MELODY_FUNC:
+	clr isNeedNextChunk
+	ret
 
 
 /******************************************************************************
@@ -601,6 +616,9 @@ TIMER0_COMPA_ISR:
 	brsh timer0_compa_isr_end
 	cpi currentState, PLAYING
 	brne timer0_compa_isr_end
+	mov temp1, isNeedNextChunk
+	cpi temp1, 1
+	brne timer0_compa_isr_end
 
 	ldi temp1, STATE_BYTE_NUMBER_IN_HEADER
 	ldi temp2, NEXT_CHUNK
@@ -609,7 +627,6 @@ TIMER0_COMPA_ISR:
 
 timer0_compa_isr_end:
 	reti
-
 
 
 

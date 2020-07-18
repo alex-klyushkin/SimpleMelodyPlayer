@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.11.0, 2020-06-23T00:31:31. -->
+<!-- Written by QtCreator 4.11.0, 2020-07-16T01:52:52. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -295,10 +295,9 @@
     </valuelist>
     <value type="int" key="PE.EnvironmentAspect.Base">2</value>
     <valuelist type="QVariantList" key="PE.EnvironmentAspect.Changes"/>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName">MusicPlayer2</value>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">Qt4ProjectManager.Qt4RunConfiguration:D:/Projects/qt/MusicPlayerProject/MusicPlayer/MusicPlayer.pro</value>
-    <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">D:/Projects/qt/MusicPlayerProject/MusicPlayer/MusicPlayer.pro</value>
-    <value type="QString" key="RunConfiguration.Arguments">testSettings.json</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">Qt4ProjectManager.Qt4RunConfiguration:D:/Projects/from_github/SimpleMelodyPlayer/MelodyPlayerController/MusicPlayer/MusicPlayer.pro</value>
+    <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">D:/Projects/from_github/SimpleMelodyPlayer/MelodyPlayerController/MusicPlayer/MusicPlayer.pro</value>
+    <value type="QString" key="RunConfiguration.Arguments"></value>
     <value type="bool" key="RunConfiguration.Arguments.multi">false</value>
     <value type="QString" key="RunConfiguration.OverrideDebuggerStartup"></value>
     <value type="bool" key="RunConfiguration.UseCppDebugger">false</value>

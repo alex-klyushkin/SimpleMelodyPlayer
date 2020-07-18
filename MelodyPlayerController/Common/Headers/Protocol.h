@@ -21,12 +21,13 @@ enum class ProtMessageType: char {
     CONNECT      = 0x05,
     DISCONNECT   = 0x06,
     STATUS_REQ   = 0x07,
+    END_MELODY   = 0x08,
     //from controller
-    DISCONNECTED = 0x08,
-    PLAYING      = 0x09,
-    STOPPED      = 0x0a,
-    PAUSED       = 0x0b,
-    NEXT_CHUNK   = 0x0c
+    DISCONNECTED = 0x09,
+    PLAYING      = 0x0a,
+    STOPPED      = 0x0b,
+    PAUSED       = 0x0c,
+    NEXT_CHUNK   = 0x0d
 };
 
 
