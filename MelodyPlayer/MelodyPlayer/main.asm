@@ -6,8 +6,6 @@
 ;
 
 
-; 1) добавить новое сообщение от хоста - конец мелодии
-
 
 .include "tn2313adef.inc"
 
@@ -16,6 +14,8 @@
 /******************************************************************************
 * registers aliases 
 ******************************************************************************/
+.def isTransmitInProg   = r12
+.def nextStateForSend   = r13
 .def isNeedNextChunk	= r14
 .def usartDataByte		= r15
 .def temp1				= r16
@@ -36,6 +36,7 @@
 .def receivedMsgType    = r23
 .def receivedMsgLen     = r24
 .def currentState       = r25
+.def bytesFromUsart		= r26
 
 
 
@@ -54,6 +55,7 @@
 
 ; commands
 ; from app
+.equ EMPTY_STATE  = 0x00
 .equ PLAY         = 0x01
 .equ CONT_PLAY    = 0x02
 .equ STOP         = 0x03
@@ -146,7 +148,9 @@ uartBuffer: .db 0, 0, 0, 0, 0, 0, 0, 0
 * interrupts vector
 ******************************************************************************/
 .cseg
+/*
 ; interrupts vector
+.org 0
 rjmp START
 .org 7
 rjmp USART0_RX_COMPLETE_ISR
@@ -154,16 +158,57 @@ rjmp USART0_RX_COMPLETE_ISR
 rjmp USART0_TX_COMPLETE_ISR
 .org 13
 rjmp TIMER0_COMPA_ISR
-.org 22
+*/
+rjmp START
+reti
+reti
+reti
+reti
+reti
+reti
+rjmp USART0_RX_COMPLETE_ISR
+reti
+rjmp USART0_TX_COMPLETE_ISR
+reti
+reti
+reti
+rjmp TIMER0_COMPA_ISR
+reti
+reti
+reti
+reti
+reti
+reti
+reti
 
 
 
 /******************************************************************************
 * usart rx complete isr, for inbound messages
 ******************************************************************************/
+UPDATE_LEDS_FUNC:
+	mov temp1, bytesFromUsart
+	andi temp1, 0xFC
+	in temp2, PORTD
+	cbr temp2, 0xFC
+	or temp2, temp1
+	out PORTD, temp2
+
+	mov temp1, bytesFromUsart
+	andi temp1, 0x03
+	in temp2, PORTB
+	cbr temp2, 0x03
+	or temp2, temp1
+	out PORTB, temp2
+
+	ret
+
+
+
 USART0_RX_COMPLETE_ISR:
 	in temp1, UDR
 
+usart_rx_complete_isr_choose_data:
 	; choose what data is
 	sbrs receivedMsgState, FIRST_MAGIC_BYTE_BIT
 	rjmp check_first_magic_byte
@@ -192,8 +237,10 @@ process_msg_type:
 	rjmp usart0_rx_complete_isr_end
 
 process_msg_length:
-	sbr receivedMsgState, (1 << MSG_TYPE_BYTE_BIT)
+	sbr receivedMsgState, (1 << FULL_MSG_HEADER_BIT)
 	mov receivedMsgLen, temp1
+	inc bytesFromUsart
+	rcall UPDATE_LEDS_FUNC
 	rcall PROCESS_MSG_LENGTH_FUNC
 	rjmp usart0_rx_complete_isr_end
 
@@ -234,9 +281,18 @@ store_byte_to_dseg_func_store:
 
 
 SAVE_CUR_STATE_IN_OUT_BUFFER_FUNC:
+	mov temp1, isTransmitInProg
+	cpi temp1, 0
+	breq save_cur_state_in_out_buffer_func_send_byte
+	mov nextStateForSend, currentState
+	rjmp save_cur_state_in_out_buffer_func_end
+
+save_cur_state_in_out_buffer_func_send_byte:
 	ldi temp1, STATE_BYTE_NUMBER_IN_HEADER
 	mov temp2, currentState
 	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
+
+save_cur_state_in_out_buffer_func_end:
 	ret
 
 
@@ -269,21 +325,52 @@ process_cont_play_msg_func_end:
 
 PROCESS_MSG_TYPE_FUNC:
 	cpi receivedMsgType, PLAY
-	breq PROCESS_PLAY_MSG_FUNC
+	brne process_msg_type_func_is_cont_play
+	rcall PROCESS_PLAY_MSG_FUNC
+	rjmp process_msg_type_func_end
+
+process_msg_type_func_is_cont_play:
 	cpi receivedMsgType, CONT_PLAY
-	breq PROCESS_CONT_PLAY_MSG_FUNC
+	brne process_msg_type_func_is_stop
+	rcall PROCESS_CONT_PLAY_MSG_FUNC
+	rjmp process_msg_type_func_end
+
+process_msg_type_func_is_stop:
 	cpi receivedMsgType, STOP
-	breq PROCESS_STOP_MSG_FUNC
+	brne process_msg_type_func_is_pause
+	rcall PROCESS_STOP_MSG_FUNC
+	rjmp process_msg_type_func_end
+
+process_msg_type_func_is_pause:
 	cpi receivedMsgType, PAUSE
-	breq PROCESS_PAUSE_MSG_FUNC
+	brne process_msg_type_func_is_connect
+	rcall PROCESS_PAUSE_MSG_FUNC
+	rjmp process_msg_type_func_end
+
+process_msg_type_func_is_connect:
 	cpi receivedMsgType, CONNECT
-	breq PROCESS_CONNECT_MSG_FUNC
+	brne process_msg_type_func_is_disconnect
+	rcall PROCESS_CONNECT_MSG_FUNC
+	rjmp process_msg_type_func_end
+
+process_msg_type_func_is_disconnect:
 	cpi receivedMsgType, DISCONNECT
-	breq PROCESS_DISCONNECT_MSG_FUNC
+	brne process_msg_type_func_is_status_req
+	rcall PROCESS_DISCONNECT_MSG_FUNC
+	rjmp process_msg_type_func_end
+
+process_msg_type_func_is_status_req:
 	cpi receivedMsgType, STATUS_REQ
-	breq PROCESS_STATUS_REQ_MSG_FUNC
+	brne process_msg_type_func_is_end_melody
+	rcall PROCESS_STATUS_REQ_MSG_FUNC
+	rjmp process_msg_type_func_end
+
+process_msg_type_func_is_end_melody:
 	cpi receivedMsgType, END_MELODY
-	breq PROCESS_STATUS_END_MELODY_FUNC
+	brne process_msg_type_func_end
+	rcall PROCESS_STATUS_END_MELODY_FUNC
+
+process_msg_type_func_end:
 	ret
 
 
@@ -378,6 +465,8 @@ process_msg_length_func_end:
 
 
 SEND_ANSWER_TO_USART_FUNC:
+	ldi temp1, 1
+	mov isTransmitInProg, temp1
 	clr temp1
 	LOAD_BYTE_FROM_DSEG_MACRO msgHdrOutBuffer
 	mov temp1, temp2
@@ -578,14 +667,39 @@ normalize_timer0_delays_count_func_end:
 ******************************************************************************/
 USART0_TX_COMPLETE_ISR:
 	cpi byteNumForOut, PROT_HEADER_SIZE
-	brsh usart0_tx_complete_isr_end
+	brsh usart0_tx_complete_isr_check_second_state
 
+usart0_tx_complete_isr_check_send_normal_byte:
 	; load byte from msgHdrOutBuffer
 	mov temp1, byteNumForOut
 	LOAD_BYTE_FROM_DSEG_MACRO msgHdrOutBuffer
 	mov temp1, temp2
 	rcall USART0_TRANSMIT_FUNC
 	inc byteNumForOut
+	rjmp usart0_tx_complete_isr_end
+
+usart0_tx_complete_isr_check_second_state:
+	mov temp1, nextStateForSend 
+	cpi temp1, EMPTY_STATE
+	breq usart0_tx_complete_isr_stop_transmit
+	ldi temp1, 2
+	mov temp2, nextStateForSend
+	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
+	ldi temp1, EMPTY_STATE
+	mov nextStateForSend, temp1
+
+	; load byte from msgHdrOutBuffer
+	clr temp1
+	LOAD_BYTE_FROM_DSEG_MACRO msgHdrOutBuffer
+	mov temp1, temp2
+	rcall USART0_TRANSMIT_FUNC
+	ldi byteNumForOut, 1
+	rjmp usart0_tx_complete_isr_end
+
+usart0_tx_complete_isr_stop_transmit:
+	; clear tx flag
+	clr temp1
+	mov isTransmitInProg, temp1
 
 usart0_tx_complete_isr_end:
 	reti
@@ -620,10 +734,10 @@ TIMER0_COMPA_ISR:
 	cpi temp1, 1
 	brne timer0_compa_isr_end
 
-	ldi temp1, STATE_BYTE_NUMBER_IN_HEADER
-	ldi temp2, NEXT_CHUNK
-	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
-	rcall SEND_ANSWER_TO_USART_FUNC
+	push currentState
+	ldi currentState, NEXT_CHUNK
+	rcall SAVE_CUR_STATE_IN_OUT_BUFFER_FUNC
+	pop currentState
 
 timer0_compa_isr_end:
 	reti
@@ -642,13 +756,17 @@ START:
 	ldi byteNumForOut, PROT_HEADER_SIZE
 	ldi currentState, DISCONNECTED
 
-	; PORTB 4 - output OC1B
-	ldi temp1, 0x10
+	; PORTB 4 - output OC1B, PORTB 0, 1 - debug leds
+	ldi temp1, 0x13
 	out DDRB, temp1
 
-	; on 8 MHz 250 kbps
+	; PORTD 1 - usart tx, 2, 3, 4, 5, 6, 7 - debug leds
+	ldi temp1, 0xFE
+	out DDRD, temp1
+
+	; on 8 MHz 76.8 kbps
 	clr temp2
-	ldi temp1, 1
+	ldi temp1, 12
 	rcall USART_INIT_FUNC
 
 	; enable OCIE0A interrupt
@@ -658,6 +776,32 @@ START:
 	; setup timers
 	rcall SETUP_TIMER1_FAST_PWM_OUTPUTB_FUNC
 	rcall SETUP_TIMER0_CTC_MODE_FUNC
+
+	ldi temp1, 0
+	ldi temp2, PROT_MAGIC1
+	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
+	ldi temp1, 1
+	ldi temp2, PROT_MAGIC2
+	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
+
+	clr bytesFromUsart
+	clr receivedMsgState
+	clr nextStateForSend
+
+	clr isTransmitInProg
+	clr isNeedNextChunk
+	clr usartDataByte
+	clr timer0DelayCycles
+	clr startData
+	clr endData
+	clr receivedMsgType
+	clr receivedMsgLen
+
+	clr temp2
+	ldi temp1, STATE_BYTE_NUMBER_IN_HEADER
+	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
+	ldi temp1, STATE_BYTE_NUMBER_IN_HEADER + 1
+	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
 
 	; enable global interrupt
 	sei
@@ -674,6 +818,9 @@ USART_INIT_FUNC:
 	; Set baud rate
 	out UBRRH, temp2
 	out UBRRL, temp1
+	in temp1, UCSRA
+	sbr temp1, (1 << U2X)
+	out UCSRA, temp1
 	; Enable receiver and transmitter, tx and rx complete interrupts
 	ldi temp1, (1 << RXEN | 1 << TXEN | 1 << RXCIE | 1 << TXCIE)
 	out UCSRB, temp1

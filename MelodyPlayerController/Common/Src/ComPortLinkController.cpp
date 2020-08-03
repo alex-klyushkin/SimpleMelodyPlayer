@@ -41,11 +41,11 @@ bool ComPortLinkController::ConnectChannel(QJsonObject settings)
     comPort.setPortName(comPortName);
     comPort.open(QIODevice::ReadWrite);
     if (comPort.isOpen()) {
-        auto baudRate = settings["baudrate"].toInt(ComPortDefaultSettings::baudRate);
+        auto baudRate = settings["baudRate"].toInt(ComPortDefaultSettings::baudRate);
         comPort.setBaudRate(baudRate);
         auto dataBits = settings["dataLen"].toInt(ComPortDefaultSettings::dataBits);
         comPort.setDataBits(QSerialPort::DataBits(dataBits));
-        auto stopBits = settings["dataLen"].toInt(ComPortDefaultSettings::stopBits);
+        auto stopBits = settings["stopBits"].toInt(ComPortDefaultSettings::stopBits);
         comPort.setStopBits(QSerialPort::StopBits(stopBits));
         auto parity = settings["parity"].toString();
         comPort.setParity(getParityByString(parity));

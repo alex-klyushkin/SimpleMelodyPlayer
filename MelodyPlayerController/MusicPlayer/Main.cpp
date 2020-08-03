@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
     if (argc > 1) {
         fileName = argv[1];
     } else {
-        fileName = "workSettings.json";
+        fileName = "./workSettings.json";
     }
     DEBUG_LOG("file containing settings: " << fileName);
 
