@@ -44,7 +44,7 @@
 * constants 
 ******************************************************************************/
 .equ UART_BUFFER_SIZE		= 49
-.equ TIMER_8BIT_REPETITION	= 32
+.equ TIMER_8BIT_REPETITION	= 64
 
 ; magic
 .equ PROT_MAGIC1			= 0xcc
@@ -122,7 +122,7 @@
 
 .MACRO LOAD_WORD_FROM_PROG_MEM_MACRO
 	ldi ZL, LOW(@0 * 2)
-	ldi ZH, LOW(@0 * 2)
+	ldi ZH, HIGH(@0 * 2)
 	rcall LOAD_WORD_FROM_PROG_MEM_FUNC
 .ENDMACRO
 
@@ -187,20 +187,28 @@ reti
 * usart rx complete isr, for inbound messages
 ******************************************************************************/
 UPDATE_LEDS_FUNC:
+/*
 	mov temp1, bytesFromUsart
 	andi temp1, 0xFC
 	in temp2, PORTD
 	cbr temp2, 0xFC
 	or temp2, temp1
 	out PORTD, temp2
-
+	
 	mov temp1, bytesFromUsart
 	andi temp1, 0x03
 	in temp2, PORTB
 	cbr temp2, 0x03
 	or temp2, temp1
 	out PORTB, temp2
-
+	*/
+	mov temp1, bytesFromUsart
+	lsl temp1
+	lsl temp1
+	in temp2, PORTD
+	cbr temp2, 0xFC
+	or temp2, temp1
+	out PORTD, temp2
 	ret
 
 
@@ -239,8 +247,6 @@ process_msg_type:
 process_msg_length:
 	sbr receivedMsgState, (1 << FULL_MSG_HEADER_BIT)
 	mov receivedMsgLen, temp1
-	inc bytesFromUsart
-	rcall UPDATE_LEDS_FUNC
 	rcall PROCESS_MSG_LENGTH_FUNC
 	rjmp usart0_rx_complete_isr_end
 
@@ -531,9 +537,9 @@ PLAY_NEXT_NOTE_FUNC:
 play_next_note_func_load_delay:
 	; load delay value
 	mov temp1, startData
+	rcall INC_UART_DATA_START_PTR_FUNC
 	LOAD_BYTE_FROM_DSEG_MACRO uartBuffer
 	mov temp1, temp2
-	rcall INC_UART_DATA_START_PTR_FUNC
 	cpi temp1, END_MELODY_MARKER
 	brne play_next_note_func_prepare_timer0
 	sbr receivedMsgState, (1 << MELODY_END_BIT1)
@@ -544,9 +550,9 @@ play_next_note_func_prepare_timer0:
 
 	; load freq number value
 	mov temp1, startData
+	rcall INC_UART_DATA_START_PTR_FUNC
 	LOAD_BYTE_FROM_DSEG_MACRO uartBuffer
 	mov temp1, temp2
-	rcall INC_UART_DATA_START_PTR_FUNC
 	cpi temp1, END_MELODY_MARKER
 	brne play_next_note_func_prepare_timer1
 	sbr receivedMsgState, MELODY_END_BIT2
@@ -572,9 +578,9 @@ play_next_note_func_prepare_timer1:
 	cbr receivedMsgState, (1 << MELODY_END_BIT1 | 1 << MELODY_END_BIT2)
 
 	; play note
-	rcall START_TIMER0_1024_PRESCALING_FUNC
-play_next_note_func_pause_start:
 	rcall START_TIMER1_NO_PRESCALING_FUNC
+play_next_note_func_pause_start:
+	rcall START_TIMER0_1024_PRESCALING_FUNC
 	ret
 
 
@@ -641,7 +647,7 @@ NORMALIZE_TIMER0_DELAYS_COUNT_FUNC:
 
 	; is it full pause?
 	cpi temp1, 0
-	breq normalize_timer0_delays_count_func_setup_full_pause
+	breq normalize_timer0_delays_count_func_setup_full_note
 
 normalize_timer0_delays_count_func_cycle:
 	cpi temp1, 128
@@ -652,7 +658,7 @@ normalize_timer0_delays_count_func_cycle:
 	lsr timer0DelayCycles
 	rjmp normalize_timer0_delays_count_func_cycle
 
-normalize_timer0_delays_count_func_setup_full_pause:
+normalize_timer0_delays_count_func_setup_full_note:
 	ldi timer0DelayCycles, TIMER_8BIT_REPETITION * 2
 	ldi temp1, 128
 
@@ -738,6 +744,7 @@ TIMER0_COMPA_ISR:
 	ldi currentState, NEXT_CHUNK
 	rcall SAVE_CUR_STATE_IN_OUT_BUFFER_FUNC
 	pop currentState
+	rcall SEND_ANSWER_TO_USART_FUNC
 
 timer0_compa_isr_end:
 	reti
@@ -802,6 +809,9 @@ START:
 	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
 	ldi temp1, STATE_BYTE_NUMBER_IN_HEADER + 1
 	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
+
+	ldi bytesFromUsart, HIGH(octavaMinor)
+	rcall UPDATE_LEDS_FUNC
 
 	; enable global interrupt
 	sei
@@ -913,4 +923,3 @@ octavaOne:   .dw 30578, 28862, 27242, 25714, 24270, 22908, 21622, 20408, 19263, 
 octavaTwo:   .dw 15289, 14430, 13621, 12857, 12135, 11454, 10811, 10204,  9632,  9091,  8581,  8099
 octavaThree: .dw  7645,  7216,  6810,  6428,  6068,  5727,  5405,  5102,  4816,  4545,  4290,  4050
 octavaFour:  .dw  3822,  3608,  3405,  3214,  3034,  2863,  2703,  2551,  2408,  2273,  2145,  2025
-octavaAddrs: .dw octavaMinor * 2, octavaOne * 2, octavaTwo * 2, octavaThree * 2, octavaFour * 2
