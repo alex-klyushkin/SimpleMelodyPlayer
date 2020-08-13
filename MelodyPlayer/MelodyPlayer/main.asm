@@ -148,7 +148,7 @@ uartBuffer: .db 0, 0, 0, 0, 0, 0, 0, 0
 * interrupts vector
 ******************************************************************************/
 .cseg
-/*
+
 ; interrupts vector
 .org 0
 rjmp START
@@ -158,28 +158,6 @@ rjmp USART0_RX_COMPLETE_ISR
 rjmp USART0_TX_COMPLETE_ISR
 .org 13
 rjmp TIMER0_COMPA_ISR
-*/
-rjmp START
-reti
-reti
-reti
-reti
-reti
-reti
-rjmp USART0_RX_COMPLETE_ISR
-reti
-rjmp USART0_TX_COMPLETE_ISR
-reti
-reti
-reti
-rjmp TIMER0_COMPA_ISR
-reti
-reti
-reti
-reti
-reti
-reti
-reti
 
 
 
@@ -187,21 +165,6 @@ reti
 * usart rx complete isr, for inbound messages
 ******************************************************************************/
 UPDATE_LEDS_FUNC:
-/*
-	mov temp1, bytesFromUsart
-	andi temp1, 0xFC
-	in temp2, PORTD
-	cbr temp2, 0xFC
-	or temp2, temp1
-	out PORTD, temp2
-	
-	mov temp1, bytesFromUsart
-	andi temp1, 0x03
-	in temp2, PORTB
-	cbr temp2, 0x03
-	or temp2, temp1
-	out PORTB, temp2
-	*/
 	mov temp1, bytesFromUsart
 	lsl temp1
 	lsl temp1
@@ -809,9 +772,6 @@ START:
 	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
 	ldi temp1, STATE_BYTE_NUMBER_IN_HEADER + 1
 	STORE_BYTE_TO_DSEG_MACRO msgHdrOutBuffer
-
-	ldi bytesFromUsart, HIGH(octavaMinor)
-	rcall UPDATE_LEDS_FUNC
 
 	; enable global interrupt
 	sei
